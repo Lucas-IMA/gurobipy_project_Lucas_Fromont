@@ -48,12 +48,12 @@ if __name__ == "__main__":
     with open(dataset_path, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
-    if not lines:
-        print("Le fichier est vide.")
-    else:
-        print("Contenu du fichier :")
-        for line in lines:
-            print(line.strip())  # Affiche chaque ligne sans les espaces inutiles
+    # if not lines:
+    #     print("Le fichier est vide.")
+    # else:
+    #     print("Contenu du fichier :")
+    #     for line in lines:
+    #         print(line.strip())  # Affiche chaque ligne sans les espaces inutiles
 
     # Récupération des données
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     tags_by_photo = []
     for i in range(1, nb_photos + 1):
         # Orientation
-        # 1: H, 2: V
+        # 2: H, 1: V
         if lines[i].split()[0] == "H":
             orientations.append(2)
         else:
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     # print(tags_matrix)
 
     # Big M
-    BigM = 1e6
+    # BigM = 1e6
 
     with gp.Model("slideshow") as model:
             
@@ -147,9 +147,9 @@ if __name__ == "__main__":
             Min = model.addVars(nb_photos - 1, vtype=GRB.INTEGER, name="Min")
 
             # Variables binaires pour les contraintes de minimum, celle qui est à 1 correspond à la variable qui est le minimum
-            TCT_est_min = model.addVars(nb_photos - 1, vtype=GRB.BINARY, name="TCT_est_min")
-            TNC1T_est_min = model.addVars(nb_photos - 1, vtype=GRB.BINARY, name="TNC1T_est_min")
-            TNC2T_est_min = model.addVars(nb_photos - 1, vtype=GRB.BINARY, name="TNC2T_est_min")
+            # TCT_est_min = model.addVars(nb_photos - 1, vtype=GRB.BINARY, name="TCT_est_min")
+            # TNC1T_est_min = model.addVars(nb_photos - 1, vtype=GRB.BINARY, name="TNC1T_est_min")
+            # TNC2T_est_min = model.addVars(nb_photos - 1, vtype=GRB.BINARY, name="TNC2T_est_min")
 
             # Contraintes
 
@@ -163,7 +163,7 @@ if __name__ == "__main__":
             
             # Une slide est utilisée ssi elle contient une photo
             for s in range(nb_photos):
-                model.addConstr(Utilisation_slide[s] * BigM >= Mat_photo_slide_position.sum('*', s, '*'))
+                model.addConstr(Utilisation_slide[s] * 2 >= Mat_photo_slide_position.sum('*', s, '*')) # 2 car une slide contient au plus 2 photos
                 model.addConstr(Utilisation_slide[s] <= Mat_photo_slide_position.sum('*', s, '*'))
 
             # Une seule photo maximum par position dans une slide
@@ -207,17 +207,18 @@ if __name__ == "__main__":
 
             # Calcul du minimum entre les tags communs et les tags non communs pour chaque slide
             for s in range(nb_photos-1):
-                model.addConstr(Min[s] <= Tags_communs_totaux[s])
-                model.addConstr(Min[s] <= Tags_non_communs1_totaux[s])
-                model.addConstr(Min[s] <= Tags_non_communs2_totaux[s])
-                model.addConstr(Min[s] >= Tags_communs_totaux[s] - BigM * (1 - TCT_est_min[s]))
-                model.addConstr(Min[s] >= Tags_non_communs1_totaux[s] - BigM * (1 - TNC1T_est_min[s]))
-                model.addConstr(Min[s] >= Tags_non_communs2_totaux[s] - BigM * (1 - TNC2T_est_min[s]))
-                model.addConstr(TCT_est_min[s] + TNC1T_est_min[s] + TNC2T_est_min[s] == 1)
+            #     model.addConstr(Min[s] <= Tags_communs_totaux[s])
+            #     model.addConstr(Min[s] <= Tags_non_communs1_totaux[s])
+            #     model.addConstr(Min[s] <= Tags_non_communs2_totaux[s])
+            #     model.addConstr(Min[s] >= Tags_communs_totaux[s] - BigM * (1 - TCT_est_min[s]))
+            #     model.addConstr(Min[s] >= Tags_non_communs1_totaux[s] - BigM * (1 - TNC1T_est_min[s]))
+            #     model.addConstr(Min[s] >= Tags_non_communs2_totaux[s] - BigM * (1 - TNC2T_est_min[s]))
+            #     model.addConstr(TCT_est_min[s] + TNC1T_est_min[s] + TNC2T_est_min[s] == 1)
+                model.addConstr(Min[s] == gp.min_(Tags_communs_totaux[s], Tags_non_communs1_totaux[s], Tags_non_communs2_totaux[s]))    
 
-            # Pour chaque slide, soit deux photos verticales maximum, soit une photo horizontale
+            # Pour chaque slide, soit deux photos verticales, soit une photo horizontale
             for s in range(nb_photos):
-                model.addConstr(gp.quicksum(Mat_photo_slide_position[i, s, p] * orientations[i] for i in range(nb_photos) for p in range(2)) <= 2)
+                model.addConstr(gp.quicksum(Mat_photo_slide_position[i, s, p] * orientations[i] for i in range(nb_photos) for p in range(2)) == 2 * Utilisation_slide[s])
 
             # Le diaporama contient au moins une slide
             model.addConstr(Utilisation_slide[0] == 1)
@@ -234,6 +235,12 @@ if __name__ == "__main__":
             callback_func = partial(callback, cbdata=callback_data)
 
             model.optimize(callback_func)
+
+            # if model.status == GRB.INF_OR_UNBD:
+            #     print("Le modèle est infaisable. Calcul de l'IIS...")
+            #     model.computeIIS()
+            #     model.write("infeasible.ilp")  # Génère un fichier indiquant les contraintes conflictuelles
+
 
             # # Affichage des résultats
             # for v in model.getVars():
